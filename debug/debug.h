@@ -1,5 +1,5 @@
-#ifndef debug
-#define debug
+#ifndef DEBUG_HEADER
+#define DEBUG_HEADER
 
 #ifdef DEBUG
 #define CHECK(expression) CheckIt(expression, __LINE__, __func__, __FILE__)
@@ -10,12 +10,6 @@
 //#define calloc(num, size) safe_calloc(num , size, __LINE__, __func__, __FILE__)
 
 //#define free(ptr) safe_free(ptr, __LINE__, __func__, __FILE__);
-
-#define LOG_NAME "aue_sanitizer.txt"
-
-static FILE *logfile = nullptr;
-
-
 
 //! Checks expr expression for falsity (used when debugging)    // I want my bag back!
 //!
@@ -30,7 +24,7 @@ void CheckIt(bool expr,
              const char* file_name);
 
 
-void* safe_calloc(size_t data_len,
+/*void* safe_calloc(size_t data_len,
                   size_t data_size,
                   int line,
                   const char *func,
@@ -43,5 +37,5 @@ void safe_free(void *ptr,
 
 void InitSafeMemLog();
 
-void CloseSafeMemLog();
+void CloseSafeMemLog();*/
 #endif

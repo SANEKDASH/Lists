@@ -1,3 +1,6 @@
+#ifndef CLASSIC_LIST_HEADER
+#define CLASSIC_LIST_HEADER
+
 typedef int ClassicListValType_t;
 
 struct ClassicListElem
@@ -9,8 +12,8 @@ struct ClassicListElem
 
 struct ClassicList
 {
-    ClassicListElem head;
-    ClassicListElem tale;
+    ClassicListElem *root;
+    size_t elem_count;
 };
 
 typedef enum
@@ -18,13 +21,21 @@ typedef enum
     kClassicListSuccess,
 } ClassicListErr_t;
 
-ClassicListElem *ClassicListInit(ClassicListValType_t value);
+ClassicListElem *ClassicListInit(ClassicList *list,
+                                 ClassicListValType_t value);
 
-ClassicListElem *ClassicListInsert(ClassicListElem *elem,
-                                   ClassicListValType_t value);
+ClassicListElem *ClassicListInsertAfter(ClassicList *list,
+                                        ClassicListElem *elem,
+                                        ClassicListValType_t value);
 
-ClassicListElem *ClassicListInsertBefore(ClassicListElem *elem,
+ClassicListElem *ClassicListInsertBefore(ClassicList *list,
+                                         ClassicListElem *elem,
                                          ClassicListValType_t value);
 
-ClassicListElem *ClassicListDelete(ClassicListElem *elem);
+ClassicListElem *ClassicListDelete(ClassicList *list,
+                                   ClassicListElem *elem,
+                                   ClassicListValType_t *ret_value);
 
+ClassicListErr_t ClassicListDtor(ClassicList *list);
+
+#endif

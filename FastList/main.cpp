@@ -2,29 +2,39 @@
 
 #include "list.h"
 #include "../ListDump/list_dump.h"
+#include "../debug/debug.h"
+
+#define DEBUG
 
 int main()
 {
-    BeginListDump();
+    BeginListGraphDump();
 
     List list = {};
 
     ListConstructor(&list);
 
-    ListAddAfter(&list, 0, 10);
-    ListAddAfter(&list, 1, 11);
-    ListDelete(&list, 1);
-    ListAddAfter(&list, 0, 10);
+    for (size_t i = 0; i < 5; i++)
+    {
+        ListAddAfter(&list, i, i);
+    }
 
+    int a = 0;
+    ListDelete(&list, 3, &a);
+    ListAddAfter(&list, 5, 228);
+    ListAddAfter(&list, 5, 1337);
+    ListAddAfter(&list, 5, 1488);
+    printf("AAA\n");
 
-    //ListAddAfter(&list, 1, 15);
-    //ListDelete(&list, 1);
-
-    DumpList(&list);
+    ListDelete(&list, 3, &a);
+    ListDelete(&list, 4, &a);
+    ListDelete(&list, 5, &a);
+    ListDelete(&list, 1, &a);
+    ListDelete(&list, 2, &a);
 
     ListDestructor(&list);
 
-    EndListDump();
+    EndListGraphDump();
 
     return 0;
 }

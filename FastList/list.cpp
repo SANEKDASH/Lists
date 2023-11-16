@@ -1,37 +1,51 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define DEBUG
+
 #include "list.h"
+#include "../ListDump/list_dump.h"
+#include "../debug/debug.h"
+#include "../debug/color_print.h"
 
-#define DUMP_NAME "list.dmp.html"
 
-#define EXPAND 'e'
-#define PRESS  'p'
+#ifdef DEBUG
 
-static FILE *dmp_file = nullptr;
+#define TEXT_DUMP_LIST(list) TextDumpList(list)
+#define DEBUG_ON(...) __VA_ARGS__
+
+#else
+
+#define TEXT_DUMP_LIST(list)
+#define DEBUG_ON(...)
+
+#endif
 
 static const size_t kStartListSize = 8;
 
 static const int kPoisonVal = 0xBADBABA;
 
+static const int kFreePoison = -1;
+
 static const int kMultiplier = 2;
 
-static ListErrors_t ResizeList(List *list, const char mode);
+
+
+static ListErrors_t ResizeList(List *list, size_t new_size);
 
 static void MemSetList(List *list, ListElemType_t value);
+
+static ListErrors_t ListLinearization(List *list);
 
 //================================================================================================
 
 ListErrors_t ListVerify(List *list)
 {
+    CHECK(list);
+
     if (list->head < 0)
     {
         list->status |= kHeadLessZero;
-    }
-
-    if (list->tail < 0)
-    {
-        list->status |= kTailLessZero;
     }
 
     if (list->data == nullptr)
@@ -49,6 +63,26 @@ ListErrors_t ListVerify(List *list)
         list->status |= kTailLessHead;
     }
 
+    if (list->tail < 0)
+    {
+        list->status |= kTailLessZero;
+    }
+
+    if (list->elem_count < 0)
+    {
+        list->status |= kElemCountLessZero;
+    }
+
+    if (list->prev[0] != list->tail)
+    {
+        list->status |= kWrongPrev;
+    }
+
+    if (list->next[list->tail] != 0)
+    {
+        list->status |= kWrongTailNext;
+    }
+
     return list->status;
 }
 
@@ -56,23 +90,34 @@ ListErrors_t ListVerify(List *list)
 
 ListErrors_t ListConstructor(List *list)
 {
+    CHECK(list);
+
     list->capacity = kStartListSize;
 
-    list->data = (ListElemType_t *) calloc(list->capacity + 1, sizeof(ListElemType_t));
-    list->prev = (int *) calloc(list->capacity + 1, sizeof(int));
-    list->next = (int *) calloc(list->capacity + 1, sizeof(int));
+    list->data = (ListElemType_t *) calloc(list->capacity, sizeof(ListElemType_t));
+    list->prev = (int *)            calloc(list->capacity, sizeof(int));
+    list->next = (int *)            calloc(list->capacity, sizeof(int));
+
+    if (list->data == nullptr || list->prev == nullptr || list->next == nullptr)
+    {
+        list->status = kFailedAllocation;
+
+        // free???? (nullptr)?
+        return list->status;
+    }
 
     list->status = kListClear;
 
-    list->tail = list->head = 0;
-    list->free = 1;
-
-    list->data[0] = kPoisonVal;
-    list->prev[0] = list->tail;
-    list->next[0] = list->head;
+    list->tail       = 0;
+    list->head       = 0;
+    list->free       = 1;
+    list->elem_count = 0;
 
     MemSetList(list, kPoisonVal);
-    TextDumpList(list);
+
+    list->data[0] = kPoisonVal;
+    list->next[0] = list->head;
+    list->prev[0] = list->head;
 
     return kListClear;
 }
@@ -81,9 +126,7 @@ ListErrors_t ListConstructor(List *list)
 
 ListErrors_t ListDestructor(List *list)
 {
-    list->data = (ListElemType_t *) ((char *)list->data - sizeof(ListElemType_t));
-    list->prev = (int *) ((char *)list->prev - sizeof(int));
-    list->next = (int *) ((char *)list->next - sizeof(int));
+    CHECK(list);
 
     free(list->data);
     free(list->prev);
@@ -100,54 +143,92 @@ ListErrors_t ListAddAfter(List *list,
                           size_t pos,
                           ListElemType_t value)
 {
-    ListVerify(list);
+    CHECK(list);
 
-    if (list->prev[pos] = -1)
-    {
-        return kWrongUsingOfList;
-    }
+    GRAPH_DUMP(list);
 
-    if (list->status != kListClear)
+    if (ListVerify(list) != kListClear)
     {
         return list->status;
     }
 
-    if (list->tail > list->capacity)
+    if (list->prev[pos] == kFreePoison || pos < 0)
     {
-        ResizeList(list, EXPAND);
+        return kWrongUsingOfList;
     }
+
+    if (list->next[list->free] == 0)
+    {
+        ResizeList(list, list->capacity * kMultiplier);
+    }
+
+    ++list->elem_count;
 
     size_t data_pos = list->free;
     list->free = list->next[data_pos];
+
+    if (list->next[pos] == 0)
+    {
+        list->tail = data_pos;
+    }
 
     list->data[data_pos] = value;
     list->prev[data_pos] = pos;
     list->next[data_pos] = list->next[pos];
 
     list->prev[list->next[pos]] = data_pos;
-    list->next[pos] = data_pos;
+    list->next[pos]             = data_pos;
 
-    TextDumpList(list);
+    GRAPH_DUMP(list);
 
     return kListClear;
 }
 
 //================================================================================================
 
-static ListErrors_t ResizeList(List *list, const char mode)
+ListErrors_t ListAddBefore(List *list,
+                           size_t pos,
+                           ListElemType_t value)
 {
-    if (mode == PRESS)
-    {
-        list->capacity /= kMultiplier;
-    }
-    else if (mode == EXPAND)
-    {
-        list->capacity *= kMultiplier;
-    }
+    CHECK(list);
+
+    return ListAddAfter(list, pos -1, value);
+}
+
+//================================================================================================
+
+static ListErrors_t ResizeList(List *list, size_t new_size)
+{
+    CHECK(list);
+
+    ListLinearization(list);
+
+    list->capacity = new_size;
 
     list->data = (ListElemType_t *) realloc(list->data, list->capacity * sizeof(ListElemType_t));
-    list->prev = (int *) realloc(list->prev, list->capacity * sizeof(int));
-    list->next = (int *) realloc(list->next, list->capacity * sizeof(int));
+    list->prev = (int *)            realloc(list->prev, list->capacity * sizeof(int));
+    list->next = (int *)            realloc(list->next, list->capacity * sizeof(int));
+
+/*
+    Cppreference : https://en.cppreference.com/w/c/memory/free
+
+    The function accepts (and does nothing with) the null pointer
+    to reduce the amount of special-casing. Whether allocation succeeds or not,
+    the pointer returned by an allocation function can be passed to free().
+*/
+
+    if (list->data == nullptr || list->prev == nullptr || list->next == nullptr)
+    {
+        list->status |= kFailedReallocation;
+
+        free(list->data);
+        free(list->prev);
+        free(list->next);
+
+        return kFailedReallocation;
+    }
+
+    MemSetList(list, kPoisonVal);
 
     return kListClear;
 }
@@ -155,18 +236,33 @@ static ListErrors_t ResizeList(List *list, const char mode)
 //================================================================================================
 
 ListErrors_t ListDelete(List *list,
-                        size_t pos)
+                        size_t pos,
+                        ListElemType_t *ret_val)
 {
-    ListVerify(list);
+    CHECK(list);
+    CHECK(ret_val);
 
-    if (list->prev[pos] = -1)
+    if (ListVerify(list) != kListClear)
+    {
+        return list->status;
+    }
+
+    if (list->prev[pos] == kFreePoison || pos <= 0)
     {
         return kWrongUsingOfList;
     }
 
-    if (list->status != kListClear)
+    if ((list->elem_count < list->capacity / (kMultiplier * kMultiplier)) &&
+        (list->capacity > kStartListSize))
     {
-        return list->status;
+        ResizeList(list, list->capacity / kMultiplier);
+    }
+
+    *ret_val = list->data[pos];
+
+    if (pos == list->tail)
+    {
+        list->tail = list->prev[pos];
     }
 
     list->prev[list->next[pos]] = list->prev[pos];
@@ -178,72 +274,81 @@ ListErrors_t ListDelete(List *list,
 
     list->free = pos;
 
-    TextDumpList(list);
+    --list->elem_count;
+
+    GRAPH_DUMP(list);
 
     return kListClear;
-}
-
-//================================================================================================
-
-ListErrors_t TextDumpList(List *list)
-{
-    fprintf(dmp_file, "head = %d\ntail = %d\nfree = %d\n",
-                      list->head,
-                      list->tail,
-                      list->free);
-    for (size_t i = 0; i < list->capacity; i ++)
-    {
-        fprintf(dmp_file, "\tdata[%d] = %d; prev[%d] = %d; next[%d] = %d\n\n",
-                          i,
-                          list->data[i],
-                          i,
-                          list->prev[i],
-                          i,
-                          list->next[i]);
-    }
-    fprintf(dmp_file, "---------------------------------------\n");
-
-    return kListClear;
-}
-
-//================================================================================================
-
-void DumpListOpen()
-{
-    dmp_file = fopen(DUMP_NAME, "w");
-
-    if (dmp_file == nullptr)
-    {
-        perror("DumpListOpen() failed to open dump file");
-    }
-    fprintf(dmp_file, "<pre>\n");
-}
-
-//================================================================================================
-
-void DumpListClose()
-{
-    if (dmp_file != nullptr)
-    {
-        fclose(dmp_file);
-        dmp_file = nullptr;
-
-    }
 }
 
 //================================================================================================
 
 static void MemSetList(List *list, ListElemType_t value)
 {
-    for (size_t i = list->tail + 1; i < list->capacity; ++i)
+    CHECK(list);
+
+    size_t i = list->tail + 1;
+
+    for ( ; i < list->capacity - 1 ; ++i)
     {
-        list->data[i] = value;
+            list->data[i] = value;
 
-        list->next[i] = i + 1;
+            list->next[i] = i + 1;
 
-        list->prev[i] = -1;
+            list->prev[i] = -1;
     }
+
+    list->data[i] = value;
+    list->next[i] = 0;
+    list->prev[i] = -1;
+
+    GRAPH_DUMP(list);
 }
 
+//================================================================================================
 
+static ListErrors_t ListLinearization(List *list)
+{
 
+    ListElemType_t *line_data = (ListElemType_t *) calloc(list->capacity, sizeof(ListElemType_t));
+
+    if (line_data == nullptr)
+    {
+        return kFailedAllocation;
+    }
+
+    size_t pos = list->next[0];
+    size_t i = 1;
+
+    while (i < list->elem_count)
+    {
+        line_data[i] = list->data[pos];
+
+        pos = list->next[pos];
+
+        list->next[i - 1] = i;
+
+        list->prev[i] = i - 1;
+
+        ++i;
+    }
+
+    line_data[i] = list->data[pos];
+
+    free(list->data);
+
+    list->next[i - 1] = i;
+
+    list->prev[i] = i - 1;
+    list->next[i] = 0;
+
+    list->prev[0] = i;
+
+    list->data = line_data;
+    list->tail = i;
+    list->free = i + 1;
+
+    return kListClear;
+}
+
+//================================================================================================

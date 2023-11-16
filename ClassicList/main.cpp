@@ -5,14 +5,14 @@
 
 int main()
 {
-    ClassicListElem *root;
+    ClassicList list;
 
-    root = ClassicListInit(10);
+    ClassicListInit(&list, 10);
 
-    ClassicListInsert(root, 15);
-    //ClassicListInsert(root, 20);
+    ClassicListInsertAfter(&list, list.root, 20);
 
-    printf("%d", root->data);
+    ClassicListDtor(&list);
+
 
     return 0;
 }

@@ -1,11 +1,19 @@
 #include <stdlib.h>
+#include <stdio.h>
 
+#include "../debug/debug.h"
+#include "../debug/color_print.h"
 #include "classic_list.h"
+
+static ClassicListValType_t kPoisonVal = 0xBADBABA;
 
 //================================================================================================
 
-ClassicListElem *ClassicListInit(ClassicListValType_t value)
+ClassicListElem *ClassicListInit(ClassicList *list,
+                                 ClassicListValType_t value)
 {
+    CHECK(list);
+
     ClassicListElem *root = (ClassicListElem *) calloc(1, sizeof(ClassicListElem));
 
     if (root == nullptr)
@@ -13,7 +21,10 @@ ClassicListElem *ClassicListInit(ClassicListValType_t value)
         return nullptr;
     }
 
+    list->elem_count = 1;
     root->data = value;
+
+    list->root = root;
 
     root->next = root->prev = nullptr;
 
@@ -22,9 +33,12 @@ ClassicListElem *ClassicListInit(ClassicListValType_t value)
 
 //================================================================================================
 
-ClassicListElem *ClassicListInsertAfter(ClassicListElem *elem,
+ClassicListElem *ClassicListInsertAfter(ClassicList *list,
+                                        ClassicListElem *elem,
                                         ClassicListValType_t value)
 {
+    CHECK(elem);
+
     ClassicListElem *after = (ClassicListElem *) calloc(1, sizeof(ClassicListElem));
 
     if (after == nullptr)
@@ -36,6 +50,7 @@ ClassicListElem *ClassicListInsertAfter(ClassicListElem *elem,
     after->next = nullptr;
     after->prev = elem;
 
+
     if (elem->next != nullptr)
     {
         after->next = elem->next;
@@ -45,46 +60,36 @@ ClassicListElem *ClassicListInsertAfter(ClassicListElem *elem,
 
     elem->next = after;
 
+    ++list->elem_count;
+
     return after;
 }
 
 //================================================================================================
 
-ClassicListElem *ClassicListInsertBefore(ClassicListElem *elem,
+ClassicListElem *ClassicListInsertBefore(ClassicList *list,
+                                         ClassicListElem *elem,
                                          ClassicListValType_t value)
 {
-    ClassicListElem *before = (ClassicListElem *) calloc(1 ,sizeof(ClassicListElem));
+    CHECK(elem);
+    CHECK(list);
 
-    if (before == nullptr)
-    {
-        return nullptr;
-    }
-
-    before->data = value;
-    before->next = elem;
-    before->prev = nullptr;
-
-    if (elem->prev != nullptr)
-    {
-        before->prev = elem->prev;
-
-        elem->prev->next = before;
-    }
-
-    elem->prev = before;
-
-    return before;
+    return ClassicListInsertAfter(list, elem->prev, value);
 }
 
 //================================================================================================
 
-ClassicListElem *ClassicListDelete(ClassicListElem *elem)
+ClassicListElem *ClassicListDelete(ClassicList *list,
+                                   ClassicListElem *elem,
+                                   ClassicListValType_t *ret_value)
 {
+    CHECK(elem);
+
     if (elem->prev == nullptr)
     {
         elem->next->prev = nullptr;
     }
-    //hueta kakayato
+
     if (elem->next == nullptr)
     {
         elem->prev->next = nullptr;
@@ -98,8 +103,32 @@ ClassicListElem *ClassicListDelete(ClassicListElem *elem)
     free(elem);
     elem = nullptr;
 
+    --list->elem_count;
+
     //what return?
     return nullptr;
+}
+
+//================================================================================================
+
+ClassicListErr_t ClassicListDtor(ClassicList *list)
+{
+    ClassicListElem *curr_node = list->root;
+
+    for (size_t i = 1; i < list->elem_count; ++i)
+    {
+        curr_node = curr_node->next;
+
+        curr_node->prev->data = kPoisonVal;
+
+        curr_node->prev->next = nullptr;
+
+        free(curr_node->prev);
+
+        curr_node->prev = nullptr;
+    }
+
+    return kClassicListSuccess;
 }
 
 //================================================================================================
